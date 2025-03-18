@@ -4,6 +4,7 @@
 # This notebook demonstrates how to use cross-correlation analysis techniques
 # to detect when the DS18B20 temperature sensor is connected or disconnected.
 
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,9 +16,12 @@ from statsmodels.graphics.tsaplots import plot_acf, plot_pacf, plot_ccf
 from statsmodels.tsa.stattools import adfuller
 from scipy import signal
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 import joblib
 import warnings
 warnings.filterwarnings('ignore')  # Suppress warnings for cleaner output
+
+load_dotenv()
 
 # Set up plotting style
 plt.style.use('seaborn-v0_8-whitegrid')
@@ -65,10 +69,12 @@ for the sensor's connection state without relying solely on absolute temperature
 # 2. Connect to InfluxDB and Query Data
 # ====================================
 # Replace these with your actual InfluxDB credentials
-url = "https://your-influxdb-url"
-token = "your-generated-token"
-org = "your-organization"
-bucket = "your-bucket"
+url    = os.getenv('INFLUX_URL')
+token  = os.getenv('INFLUX_TOKEN')
+org    = os.getenv('INFLUX_ORG')
+bucket = os.getenv('INFLUX_BUCKET')
+
+print(url, token, org, bucket)
 
 print("\nConnecting to InfluxDB...")
 client = InfluxDBClient(url=url, token=token, org=org)
@@ -304,17 +310,16 @@ lags = np.arange(-30, 31)  # -30 to +30 minute lags
 plt.figure(figsize=(12, 6))
 plt.stem(lags, ccf_values[30:91], linefmt='b-', markerfmt='bo', basefmt='r-')
 plt.axhline(y=0, color='r', linestyle='-')
-plt.axhline(y=1.96/np.sqrt(len(ds18b20_data)), linestyle='--', color='gray')
-plt.axhline(y=-1.96/np.sqrt(len(ds18b20_data)), linestyle='--', color='gray')
+plt.axhline(y=1.96/np.sqrt(len(ds18b20_df)), linestyle='--', color='gray')
+plt.axhline(y=-1.96/np.sqrt(len(ds18b20_df)), linestyle='--', color='gray')
 plt.xlabel('Lag (minutes)')
 plt.ylabel('Cross-correlation')
-plt.title(title)
 plt.annotate(f'Max correlation: {max_corr:.4f} at lag {max_lag}', 
                 xy=(0.05, 0.95), xycoords='axes fraction')
 plt.grid(True)
 plt.tight_layout()
     
-return max_corr, max_lag, ccf_values
+
 
 # Calculate CCF for likely disconnected periods
 disconnected_mask = merged_df['initial_label'] == 0
@@ -384,7 +389,7 @@ temperature (disconnected) or by human body temperature (connected).
 def rolling_granger_causality(y, x, window_size=120, max_lag=5):
     """Calculate rolling Granger causality p-values."""
     p_values = []
-    f_stats = []
+    f_stats  = []
     
     # We need enough data points for the test
     if len(y) < window_size + max_lag:

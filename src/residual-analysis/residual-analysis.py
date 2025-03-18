@@ -1,4 +1,4 @@
-# Residual Analysis for DS18B20 Sensor State Detection
+#region Residual Analysis for DS18B20 Sensor State Detection
 # =====================================================
 
 # This notebook demonstrates how to use residual analysis techniques to detect 
@@ -24,8 +24,8 @@ sns.set_context("notebook", font_scale=1.2)
 # Set Matplotlib parameters for better readability
 plt.rcParams['figure.figsize'] = [12, 8]
 plt.rcParams['font.size'] = 12
-
-# 1. Connect to InfluxDB
+#endregion
+#region 1. Connect to InfluxDB
 # ======================
 # Replace these with your actual InfluxDB credentials
 url = "https://your-influxdb-url"
@@ -36,8 +36,8 @@ bucket = "your-bucket"
 print("Connecting to InfluxDB...")
 client = InfluxDBClient(url=url, token=token, org=org)
 query_api = client.query_api()
-
-# 2. Query sensor data
+#endregion
+#region 2. Query sensor data
 # ====================
 # Define the time range for data retrieval (e.g., last 7 days)
 # Adjust this based on how much data you want to analyze
@@ -87,13 +87,13 @@ else:
     print(f"Retrieved {len(ds18b20_result)} data points for DS18B20")
     print(f"Retrieved {len(si7021_result)} data points for Si7021")
     print(f"Retrieved {len(rpi_result)} data points for RPi CPU")
-
-# 3. Process and merge data
+#endregion
+#region 3. Process and merge data
 # =========================
 # Keep only necessary columns and rename for clarity
-ds18b20_df = ds18b20_result[['_time', '_value']].rename(columns={'_value': 'ds18b20_temp'})
-si7021_df = si7021_result[['_time', '_value']].rename(columns={'_value': 'room_temp'})
-rpi_df = rpi_result[['_time', '_value']].rename(columns={'_value': 'cpu_temp'})
+ds18b20_df = ds18b20_result[['_time', '_value']].rename(columns={'_value': 'core'})
+si7021_df = si7021_result[['_time', '_value']].rename(columns={'_value': 'room'})
+rpi_df = rpi_result[['_time', '_value']].rename(columns={'_value': 'cpu'})
 
 # Make time the index for easier merging
 ds18b20_df.set_index('_time', inplace=True)
@@ -106,20 +106,20 @@ si7021_df = si7021_df.resample('5T').mean()
 rpi_df = rpi_df.resample('5T').mean()
 
 # Merge all data into a single DataFrame
-merged_df = pd.concat([ds18b20_df, si7021_df, rpi_df], axis=1)
+df = pd.concat([ds18b20_df, si7021_df, rpi_df], axis=1)
 
 # Handle missing values (if any)
 # Here we use forward fill followed by backward fill for any remaining NaNs
-merged_df = merged_df.fillna(method='ffill').fillna(method='bfill')
+df = df.fillna(method='ffill').fillna(method='bfill')
 
 print("\nMerged data sample:")
-print(merged_df.head())
+print(df.head())
 print("\nDataset information:")
-print(merged_df.info())
+print(df.info())
 print("\nSummary statistics:")
-print(merged_df.describe())
-
-# 4. Exploratory Data Analysis
+print(df.describe())
+#endregion
+#region 4. Exploratory Data Analysis
 # ============================
 print("\nPerforming exploratory data analysis...")
 
@@ -127,19 +127,19 @@ plt.figure(figsize=(14, 10))
 
 # Plot temperature data
 plt.subplot(3, 1, 1)
-plt.plot(merged_df.index, merged_df['ds18b20_temp'], 'b-', label='DS18B20')
+plt.plot(df.index, df['core'], 'b-', label='DS18B20')
 plt.title('DS18B20 Temperature Over Time')
 plt.ylabel('Temperature (°F)')
 plt.legend()
 
 plt.subplot(3, 1, 2)
-plt.plot(merged_df.index, merged_df['room_temp'], 'g-', label='Si7021 (Room)')
+plt.plot(df.index, df['room'], 'g-', label='Si7021 (Room)')
 plt.title('Room Temperature Over Time')
 plt.ylabel('Temperature (°F)')
 plt.legend()
 
 plt.subplot(3, 1, 3)
-plt.plot(merged_df.index, merged_df['cpu_temp'], 'r-', label='RPi CPU')
+plt.plot(df.index, df['cpu'], 'r-', label='RPi CPU')
 plt.title('CPU Temperature Over Time')
 plt.ylabel('Temperature (°F)')
 plt.legend()
@@ -149,7 +149,7 @@ plt.savefig('temperature_time_series.png')
 plt.show()
 
 # Correlation analysis
-correlation = merged_df.corr()
+correlation = df.corr()
 plt.figure(figsize=(10, 8))
 sns.heatmap(correlation, annot=True, cmap='coolwarm', linewidths=.5)
 plt.title('Correlation Between Temperature Sensors')
@@ -159,8 +159,9 @@ plt.show()
 
 print("\nCorrelation matrix:")
 print(correlation)
+#endregion
 
-# 5. Residual Analysis Approach
+#region 5. Residual Analysis Approach
 # =============================
 print("\nStarting residual analysis...")
 
@@ -184,8 +185,8 @@ print("\nStarting residual analysis...")
 # was likely connected vs disconnected
 
 plt.figure(figsize=(14, 8))
-plt.plot(merged_df.index, merged_df['ds18b20_temp'], 'b-', label='DS18B20')
-plt.plot(merged_df.index, merged_df['room_temp'], 'g-', label='Room (Si7021)')
+plt.plot(df.index, df['core'], 'b-', label='DS18B20')
+plt.plot(df.index, df['room'], 'g-', label='Room (Si7021)')
 plt.title('DS18B20 vs Room Temperature')
 plt.ylabel('Temperature (°F)')
 plt.legend()
@@ -200,24 +201,24 @@ plt.show()
 # (adjust this threshold based on your visual inspection)
 
 threshold = 90.0
-merged_df['likely_connected'] = merged_df['ds18b20_temp'] > threshold
+df['likely_connected'] = df['core'] > threshold
 
-print(f"\nIdentified {merged_df['likely_connected'].sum()} data points where sensor is likely connected")
-print(f"Identified {(~merged_df['likely_connected']).sum()} data points where sensor is likely disconnected")
+print(f"\nIdentified {df['likely_connected'].sum()} data points where sensor is likely connected")
+print(f"Identified {(~df['likely_connected']).sum()} data points where sensor is likely disconnected")
 
 # 5.2. Build a regression model for DISCONNECTED state
 # We'll use data points where the sensor is likely disconnected to train our model
 
 # Create training data from periods when the sensor is likely disconnected
-disconnected_df = merged_df[~merged_df['likely_connected']].copy()
+disconnected_df = df[~df['likely_connected']].copy()
 
 if len(disconnected_df) < 10:  # Need sufficient data for modeling
     print("Warning: Not enough data points identified as disconnected for modeling.")
     # You might need to adjust your threshold or use a different period of data
 else:
     # Prepare features (X) and target (y) for the disconnected state model
-    X_disconnected = disconnected_df[['room_temp', 'cpu_temp']]
-    y_disconnected = disconnected_df['ds18b20_temp']
+    X_disconnected = disconnected_df[['room', 'cpu']]
+    y_disconnected = disconnected_df['core']
     
     # Fit linear regression model
     model = LinearRegression()
@@ -232,7 +233,7 @@ else:
     disconnected_df['predicted_temp'] = model.predict(X_disconnected)
     
     # Calculate residuals for the training data
-    disconnected_df['residuals'] = disconnected_df['ds18b20_temp'] - disconnected_df['predicted_temp']
+    disconnected_df['residuals'] = disconnected_df['core'] - disconnected_df['predicted_temp']
     
     # Model performance metrics
     r2 = r2_score(y_disconnected, disconnected_df['predicted_temp'])
@@ -242,7 +243,7 @@ else:
     
     # Visualize model fit for disconnected periods
     plt.figure(figsize=(14, 8))
-    plt.plot(disconnected_df.index, disconnected_df['ds18b20_temp'], 'b-', label='Actual DS18B20')
+    plt.plot(disconnected_df.index, disconnected_df['core'], 'b-', label='Actual DS18B20')
     plt.plot(disconnected_df.index, disconnected_df['predicted_temp'], 'r-', label='Predicted DS18B20')
     plt.title('Disconnected State Model: Actual vs Predicted')
     plt.ylabel('Temperature (°F)')
@@ -272,24 +273,24 @@ else:
     # This will show how residuals behave differently when the sensor is connected
     
     # Prepare features for all data
-    X_all = merged_df[['room_temp', 'cpu_temp']]
+    X_all = df[['room', 'cpu']]
     
     # Predict temperatures for all data using the disconnected state model
-    merged_df['predicted_temp'] = model.predict(X_all)
+    df['predicted_temp'] = model.predict(X_all)
     
     # Calculate residuals for all data
-    merged_df['residuals'] = merged_df['ds18b20_temp'] - merged_df['predicted_temp']
+    df['residuals'] = df['core'] - df['predicted_temp']
     
     # Visualize residuals for all data, colored by likely connection state
     plt.figure(figsize=(14, 8))
     
     # Plot all residuals
-    plt.scatter(merged_df.index[~merged_df['likely_connected']], 
-                merged_df.loc[~merged_df['likely_connected'], 'residuals'],
+    plt.scatter(df.index[~df['likely_connected']], 
+                df.loc[~df['likely_connected'], 'residuals'],
                 c='blue', alpha=0.6, label='Likely Disconnected')
     
-    plt.scatter(merged_df.index[merged_df['likely_connected']], 
-                merged_df.loc[merged_df['likely_connected'], 'residuals'],
+    plt.scatter(df.index[df['likely_connected']], 
+                df.loc[df['likely_connected'], 'residuals'],
                 c='red', alpha=0.6, label='Likely Connected')
     
     # Add reference lines
@@ -319,37 +320,37 @@ else:
     h = 5 * residual_std    # Decision threshold
     
     # Calculate CUSUM values
-    merged_df['cusum_plus'] = 0.0   # Cumulative sum for detecting positive shifts
-    merged_df['cusum_minus'] = 0.0  # Cumulative sum for detecting negative shifts
+    df['cusum_plus'] = 0.0   # Cumulative sum for detecting positive shifts
+    df['cusum_minus'] = 0.0  # Cumulative sum for detecting negative shifts
     
     # First values
-    merged_df.loc[merged_df.index[0], 'cusum_plus'] = max(0, merged_df.loc[merged_df.index[0], 'residuals'] - k)
-    merged_df.loc[merged_df.index[0], 'cusum_minus'] = max(0, -merged_df.loc[merged_df.index[0], 'residuals'] - k)
+    df.loc[df.index[0], 'cusum_plus'] = max(0, df.loc[df.index[0], 'residuals'] - k)
+    df.loc[df.index[0], 'cusum_minus'] = max(0, -df.loc[df.index[0], 'residuals'] - k)
     
     # Calculate remaining CUSUM values
-    for i in range(1, len(merged_df)):
+    for i in range(1, len(df)):
         # CUSUM+ detects upward shifts (connected state - higher temperatures)
-        merged_df.loc[merged_df.index[i], 'cusum_plus'] = max(
+        df.loc[df.index[i], 'cusum_plus'] = max(
             0, 
-            merged_df.loc[merged_df.index[i-1], 'cusum_plus'] + merged_df.loc[merged_df.index[i], 'residuals'] - k
+            df.loc[df.index[i-1], 'cusum_plus'] + df.loc[df.index[i], 'residuals'] - k
         )
         
         # CUSUM- detects downward shifts (rarely useful for this application, but included for completeness)
-        merged_df.loc[merged_df.index[i], 'cusum_minus'] = max(
+        df.loc[df.index[i], 'cusum_minus'] = max(
             0, 
-            merged_df.loc[merged_df.index[i-1], 'cusum_minus'] - merged_df.loc[merged_df.index[i], 'residuals'] - k
+            df.loc[df.index[i-1], 'cusum_minus'] - df.loc[df.index[i], 'residuals'] - k
         )
     
     # Define connection state based on CUSUM
     # If CUSUM+ exceeds threshold h, sensor is likely connected
-    merged_df['cusum_connected'] = merged_df['cusum_plus'] > h
+    df['cusum_connected'] = df['cusum_plus'] > h
     
     # Visualize CUSUM chart
     plt.figure(figsize=(14, 10))
     
     # Plot CUSUM+ values
     plt.subplot(2, 1, 1)
-    plt.plot(merged_df.index, merged_df['cusum_plus'], 'b-', label='CUSUM+')
+    plt.plot(df.index, df['cusum_plus'], 'b-', label='CUSUM+')
     plt.axhline(y=h, color='r', linestyle='--', label=f'Threshold (h={h:.2f})')
     plt.title('CUSUM+ Chart for Detecting Connected State')
     plt.ylabel('CUSUM+ Value')
@@ -357,13 +358,13 @@ else:
     
     # Plot original DS18B20 temperatures with CUSUM-based classification
     plt.subplot(2, 1, 2)
-    plt.plot(merged_df.index, merged_df['ds18b20_temp'], 'b-', label='DS18B20 Temperature')
-    plt.plot(merged_df.index, merged_df['room_temp'], 'g-', label='Room Temperature', alpha=0.5)
+    plt.plot(df.index, df['core'], 'b-', label='DS18B20 Temperature')
+    plt.plot(df.index, df['room'], 'g-', label='Room Temperature', alpha=0.5)
     
     # Color the background based on detected connection state
-    for i in range(len(merged_df)-1):
-        if merged_df['cusum_connected'].iloc[i]:
-            plt.axvspan(merged_df.index[i], merged_df.index[i+1], alpha=0.2, color='red')
+    for i in range(len(df)-1):
+        if df['cusum_connected'].iloc[i]:
+            plt.axvspan(df.index[i], df.index[i+1], alpha=0.2, color='red')
     
     plt.title('DS18B20 Temperature with Connection State Detection')
     plt.ylabel('Temperature (°F)')
@@ -376,36 +377,36 @@ else:
     # 5.5. Compare Threshold-Based vs. CUSUM Detection
     
     # Calculate agreement between simple threshold and CUSUM methods
-    agreement = (merged_df['likely_connected'] == merged_df['cusum_connected']).mean() * 100
+    agreement = (df['likely_connected'] == df['cusum_connected']).mean() * 100
     print(f"\nAgreement between threshold-based and CUSUM detection: {agreement:.2f}%")
     
     # Confusion matrix-like comparison
     confusion = pd.crosstab(
-        merged_df['likely_connected'], 
-        merged_df['cusum_connected'],
+        df['likely_connected'], 
+        df['cusum_connected'],
         rownames=['Threshold'],
         colnames=['CUSUM']
     )
     
     print("\nComparison of detection methods:")
     print(confusion)
-    
-    # 6. Implement Detection Function
+#endregion
+#region 6. Implement Detection Function
     # ==============================
     
     # This function can be used to detect the sensor state for new data
-    def detect_ds18b20_connection(ds18b20_temp, room_temp, cpu_temp, 
+    def detect_ds18b20_connection(core, room, cpu, 
                                  model=model, k=k, h=h, cusum_plus_prev=0):
         """
         Detect if the DS18B20 sensor is connected using the residual-based CUSUM approach.
         
         Parameters:
         -----------
-        ds18b20_temp : float
+        core : float
             Current DS18B20 temperature reading (°F)
-        room_temp : float
+        room : float
             Current room temperature from Si7021 (°F)
-        cpu_temp : float
+        cpu : float
             Current CPU temperature (°F)
         model : sklearn.linear_model
             Trained regression model for disconnected state
@@ -422,10 +423,10 @@ else:
             Dictionary containing detection results and diagnostics
         """
         # Predict expected DS18B20 temperature if it were disconnected
-        predicted_temp = model.predict([[room_temp, cpu_temp]])[0]
+        predicted_temp = model.predict([[room, cpu]])[0]
         
         # Calculate residual
-        residual = ds18b20_temp - predicted_temp
+        residual = core - predicted_temp
         
         # Update CUSUM+ value
         cusum_plus = max(0, cusum_plus_prev + residual - k)
@@ -435,7 +436,7 @@ else:
         
         # Prepare results
         results = {
-            'ds18b20_temp': ds18b20_temp,
+            'core': core,
             'predicted_temp': predicted_temp,
             'residual': residual,
             'cusum_plus': cusum_plus,
@@ -446,22 +447,23 @@ else:
         return results
     
     # Example of using the detection function with the last data point
-    last_point = merged_df.iloc[-1]
+    last_point = df.iloc[-1]
     detection_result = detect_ds18b20_connection(
-        last_point['ds18b20_temp'],
-        last_point['room_temp'],
-        last_point['cpu_temp'],
+        last_point['core'],
+        last_point['room'],
+        last_point['cpu'],
         model=model,
         k=k,
         h=h,
-        cusum_plus_prev=merged_df['cusum_plus'].iloc[-2] if len(merged_df) > 1 else 0
+        cusum_plus_prev=df['cusum_plus'].iloc[-2] if len(df) > 1 else 0
     )
     
     print("\nDetection result for the most recent data point:")
     for key, value in detection_result.items():
         print(f"{key}: {value}")
 
-# 7. Save parameters for later use
+#endregion
+#region 7. Save parameters for later use
 # ===============================
 import joblib
 
@@ -508,3 +510,4 @@ Next steps:
 # Close the InfluxDB client
 client.close()
 print("\nAnalysis complete!")
+#endregion

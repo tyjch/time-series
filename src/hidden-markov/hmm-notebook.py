@@ -129,9 +129,9 @@ else:
 # 3. Process and Merge Data
 # =========================
 # Keep only necessary columns and rename for clarity
-ds18b20_df = ds18b20_result[['_time', '_value']].rename(columns={'_value': 'ds18b20_temp'})
-si7021_df = si7021_result[['_time', '_value']].rename(columns={'_value': 'room_temp'})
-rpi_df = rpi_result[['_time', '_value']].rename(columns={'_value': 'cpu_temp'})
+ds18b20_df = ds18b20_result[['_time', '_value']].rename(columns={'_value': 'core'})
+si7021_df = si7021_result[['_time', '_value']].rename(columns={'_value': 'room'})
+rpi_df = rpi_result[['_time', '_value']].rename(columns={'_value': 'cpu'})
 
 # Make time the index for easier merging
 ds18b20_df.set_index('_time', inplace=True)
@@ -144,18 +144,18 @@ si7021_df = si7021_df.resample('5T').mean()
 rpi_df = rpi_df.resample('5T').mean()
 
 # Merge all data into a single DataFrame
-merged_df = pd.concat([ds18b20_df, si7021_df, rpi_df], axis=1)
+df = pd.concat([ds18b20_df, si7021_df, rpi_df], axis=1)
 
 # Handle missing values (if any)
 # Here we use forward fill followed by backward fill for any remaining NaNs
-merged_df = merged_df.fillna(method='ffill').fillna(method='bfill')
+df = df.fillna(method='ffill').fillna(method='bfill')
 
 print("\nMerged data sample:")
-print(merged_df.head())
+print(df.head())
 print("\nDataset information:")
-print(merged_df.info())
+print(df.info())
 print("\nSummary statistics:")
-print(merged_df.describe())
+print(df.describe())
 
 # 4. Exploratory Data Analysis
 # ============================
@@ -165,19 +165,19 @@ plt.figure(figsize=(14, 10))
 
 # Plot temperature data
 plt.subplot(3, 1, 1)
-plt.plot(merged_df.index, merged_df['ds18b20_temp'], 'b-', label='DS18B20')
+plt.plot(df.index, df['core'], 'b-', label='DS18B20')
 plt.title('DS18B20 Temperature Over Time')
 plt.ylabel('Temperature (°F)')
 plt.legend()
 
 plt.subplot(3, 1, 2)
-plt.plot(merged_df.index, merged_df['room_temp'], 'g-', label='Si7021 (Room)')
+plt.plot(df.index, df['room'], 'g-', label='Si7021 (Room)')
 plt.title('Room Temperature Over Time')
 plt.ylabel('Temperature (°F)')
 plt.legend()
 
 plt.subplot(3, 1, 3)
-plt.plot(merged_df.index, merged_df['cpu_temp'], 'r-', label='RPi CPU')
+plt.plot(df.index, df['cpu'], 'r-', label='RPi CPU')
 plt.title('CPU Temperature Over Time')
 plt.ylabel('Temperature (°F)')
 plt.legend()
@@ -188,7 +188,7 @@ plt.show()
 
 # Histogram of DS18B20 temperatures
 plt.figure(figsize=(14, 6))
-sns.histplot(merged_df['ds18b20_temp'], bins=50, kde=True)
+sns.histplot(df['core'], bins=50, kde=True)
 plt.title('Distribution of DS18B20 Temperature Readings')
 plt.xlabel('Temperature (°F)')
 plt.ylabel('Frequency')
@@ -208,21 +208,21 @@ print("\nPreparing data for Hidden Markov Model...")
 # between sensors to capture relationships
 
 # Calculate temperature differences
-merged_df['ds18b20_room_diff'] = merged_df['ds18b20_temp'] - merged_df['room_temp']
-merged_df['ds18b20_cpu_diff'] = merged_df['ds18b20_temp'] - merged_df['cpu_temp']
-merged_df['room_cpu_diff'] = merged_df['room_temp'] - merged_df['cpu_temp']
+df['ds18b20_room_diff'] = df['core'] - df['room']
+df['ds18b20_cpu_diff'] = df['core'] - df['cpu']
+df['room_cpu_diff'] = df['room'] - df['cpu']
 
 # Create feature matrix
-feature_cols = ['ds18b20_temp', 'room_temp', 'cpu_temp', 
+feature_cols = ['core', 'room', 'cpu', 
                 'ds18b20_room_diff', 'ds18b20_cpu_diff']
-X = merged_df[feature_cols].values
+X = df[feature_cols].values
 
 # Standardize features (important for HMM)
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
 # Create a DataFrame of scaled features for easier reference
-scaled_df = pd.DataFrame(X_scaled, index=merged_df.index, columns=feature_cols)
+scaled_df = pd.DataFrame(X_scaled, index=df.index, columns=feature_cols)
 
 # Visualize the scaled features
 plt.figure(figsize=(14, 8))
@@ -239,15 +239,15 @@ plt.show()
 
 # Assuming body temperature is typically above 90°F
 body_temp_threshold = 90.0
-merged_df['initial_label'] = (merged_df['ds18b20_temp'] > body_temp_threshold).astype(int)
+df['initial_label'] = (df['core'] > body_temp_threshold).astype(int)
 
 # Visualize initial labeling
 plt.figure(figsize=(14, 6))
-plt.plot(merged_df.index, merged_df['ds18b20_temp'], 'b-', label='DS18B20 Temp')
-plt.plot(merged_df.index, merged_df['room_temp'], 'g-', alpha=0.5, label='Room Temp')
+plt.plot(df.index, df['core'], 'b-', label='DS18B20 Temp')
+plt.plot(df.index, df['room'], 'g-', alpha=0.5, label='Room Temp')
 
 # Highlight regions based on initial labels
-connected_regions = merged_df[merged_df['initial_label'] == 1]
+connected_regions = df[df['initial_label'] == 1]
 for idx, row in connected_regions.iterrows():
     plt.axvline(x=idx, color='r', alpha=0.2)
 
@@ -258,9 +258,9 @@ plt.legend()
 plt.savefig('hmm_initial_labeling.png')
 plt.show()
 
-print(f"\nInitial labeling: {merged_df['initial_label'].value_counts().to_dict()}")
-print(f"  State 0 (Disconnected): {merged_df['initial_label'].value_counts().get(0, 0)} data points")
-print(f"  State 1 (Connected): {merged_df['initial_label'].value_counts().get(1, 0)} data points")
+print(f"\nInitial labeling: {df['initial_label'].value_counts().to_dict()}")
+print(f"  State 0 (Disconnected): {df['initial_label'].value_counts().get(0, 0)} data points")
+print(f"  State 1 (Connected): {df['initial_label'].value_counts().get(1, 0)} data points")
 
 # 6. Building the Hidden Markov Model
 # ==================================
@@ -312,15 +312,15 @@ model = hmm.GaussianHMM(
 # Start probabilities: proportion of each state in initial labels
 start_prob = np.zeros(n_states)
 for i in range(n_states):
-    start_prob[i] = (merged_df['initial_label'] == i).mean()
+    start_prob[i] = (df['initial_label'] == i).mean()
 model.startprob_ = start_prob
 
 # Transition probabilities: estimated from labeled sequences
 # We'll calculate how often it transitions from one state to another
 trans_mat = np.zeros((n_states, n_states))
-for i in range(len(merged_df) - 1):
-    from_state = merged_df['initial_label'].iloc[i]
-    to_state = merged_df['initial_label'].iloc[i + 1]
+for i in range(len(df) - 1):
+    from_state = df['initial_label'].iloc[i]
+    to_state = df['initial_label'].iloc[i + 1]
     trans_mat[from_state, to_state] += 1
 
 # Normalize rows to get probabilities
@@ -335,7 +335,7 @@ means = np.zeros((n_states, X_scaled.shape[1]))
 covars = np.zeros((n_states, X_scaled.shape[1], X_scaled.shape[1]))
 
 for i in range(n_states):
-    state_data = X_scaled[merged_df['initial_label'] == i]
+    state_data = X_scaled[df['initial_label'] == i]
     if len(state_data) > 0:
         means[i] = np.mean(state_data, axis=0)
         covars[i] = np.cov(state_data, rowvar=False)
@@ -373,18 +373,18 @@ try:
     
     # 7.1 Decode the most likely sequence of states
     hidden_states = model.predict(X_scaled)
-    merged_df['hmm_state'] = hidden_states
+    df['hmm_state'] = hidden_states
     
     # Adjust states if necessary to match our expectations
     # Sometimes the HMM might flip the states (0=connected, 1=disconnected)
     # We'll check if state 1 has higher DS18B20 temps on average
-    state0_mean = merged_df[merged_df['hmm_state'] == 0]['ds18b20_temp'].mean()
-    state1_mean = merged_df[merged_df['hmm_state'] == 1]['ds18b20_temp'].mean()
+    state0_mean = df[df['hmm_state'] == 0]['core'].mean()
+    state1_mean = df[df['hmm_state'] == 1]['core'].mean()
     
     # If state 0 has higher temps, it should be the "connected" state - flip the labels
     if state0_mean > state1_mean:
         print("\nFlipping state labels to match expectations (0=disconnected, 1=connected)")
-        merged_df['hmm_state'] = 1 - merged_df['hmm_state']
+        df['hmm_state'] = 1 - df['hmm_state']
     
     # 7.2 Calculate state probabilities
     # The forward-backward algorithm gives us probabilities for each state at each time
@@ -395,15 +395,15 @@ try:
         state_probs = 1 - state_probs
     
     # Add probabilities to DataFrame
-    merged_df['connected_prob'] = state_probs[:, 1]  # Probability of being in "connected" state
+    df['connected_prob'] = state_probs[:, 1]  # Probability of being in "connected" state
     
     # 7.3 Visualize the results
     plt.figure(figsize=(14, 12))
     
     # Plot 1: Original temperature data
     plt.subplot(3, 1, 1)
-    plt.plot(merged_df.index, merged_df['ds18b20_temp'], 'b-', label='DS18B20')
-    plt.plot(merged_df.index, merged_df['room_temp'], 'g-', alpha=0.5, label='Room (Si7021)')
+    plt.plot(df.index, df['core'], 'b-', label='DS18B20')
+    plt.plot(df.index, df['room'], 'g-', alpha=0.5, label='Room (Si7021)')
     plt.title('Temperature Data')
     plt.ylabel('Temperature (°F)')
     plt.legend()
@@ -411,10 +411,10 @@ try:
     # Plot 2: HMM-decoded states
     plt.subplot(3, 1, 2)
     for state in [0, 1]:
-        mask = merged_df['hmm_state'] == state
+        mask = df['hmm_state'] == state
         label = 'Connected' if state == 1 else 'Disconnected'
         color = 'red' if state == 1 else 'blue'
-        plt.plot(merged_df.index[mask], merged_df['ds18b20_temp'][mask], 
+        plt.plot(df.index[mask], df['core'][mask], 
                  'o', markersize=4, alpha=0.7, color=color, label=label)
     plt.title('HMM-Detected Sensor States')
     plt.ylabel('Temperature (°F)')
@@ -422,8 +422,8 @@ try:
     
     # Plot 3: Connection probability
     plt.subplot(3, 1, 3)
-    plt.plot(merged_df.index, merged_df['connected_prob'], 'k-')
-    plt.fill_between(merged_df.index, 0, merged_df['connected_prob'], alpha=0.3, color='orange')
+    plt.plot(df.index, df['connected_prob'], 'k-')
+    plt.fill_between(df.index, 0, df['connected_prob'], alpha=0.3, color='orange')
     plt.axhline(y=0.5, color='r', linestyle='--', label='Decision Threshold (0.5)')
     plt.title('Probability of DS18B20 Being Connected')
     plt.ylabel('Probability')
@@ -436,8 +436,8 @@ try:
     
     # 7.4 Analyze state transitions
     # Let's find where the sensor changes state
-    merged_df['state_change'] = merged_df['hmm_state'].diff().abs() > 0
-    transitions = merged_df[merged_df['state_change']]
+    df['state_change'] = df['hmm_state'].diff().abs() > 0
+    transitions = df[df['state_change']]
     
     print(f"\nDetected {len(transitions)} state transitions:")
     if len(transitions) > 0:
@@ -446,13 +446,13 @@ try:
             print(f"  {i+1}. {idx.strftime('%Y-%m-%d %H:%M:%S')}: Sensor became {state}")
     
     # 7.5 Compare with threshold-based approach
-    agreement = (merged_df['hmm_state'] == merged_df['initial_label']).mean() * 100
+    agreement = (df['hmm_state'] == df['initial_label']).mean() * 100
     print(f"\nAgreement between threshold-based and HMM detection: {agreement:.2f}%")
     
     # Confusion matrix-like comparison
     confusion = pd.crosstab(
-        merged_df['initial_label'], 
-        merged_df['hmm_state'],
+        df['initial_label'], 
+        df['hmm_state'],
         rownames=['Threshold (90°F)'],
         colnames=['HMM']
     )
@@ -464,7 +464,7 @@ try:
     print("\nAnalyzing temperature distributions by detected state...")
     
     # Temperature statistics by state
-    state_stats = merged_df.groupby('hmm_state')['ds18b20_temp'].agg(['mean', 'std', 'min', 'max'])
+    state_stats = df.groupby('hmm_state')['core'].agg(['mean', 'std', 'min', 'max'])
     print("\nDS18B20 temperature statistics by state:")
     print(state_stats)
     
@@ -472,7 +472,7 @@ try:
     plt.figure(figsize=(14, 6))
     for state in [0, 1]:
         label = 'Connected' if state == 1 else 'Disconnected'
-        data = merged_df[merged_df['hmm_state'] == state]['ds18b20_temp']
+        data = df[df['hmm_state'] == state]['core']
         sns.kdeplot(data, label=label, fill=True, alpha=0.5)
     
     plt.title('DS18B20 Temperature Distribution by State')
@@ -486,17 +486,17 @@ try:
     # =======================================
     print("\nCreating a reusable detection function...")
     
-    def detect_connection_hmm(ds18b20_temp, room_temp, cpu_temp, model=model, scaler=scaler):
+    def detect_connection_hmm(core, room, cpu, model=model, scaler=scaler):
         """
         Detect if the DS18B20 sensor is connected using the HMM model.
         
         Parameters:
         -----------
-        ds18b20_temp : float
+        core : float
             Current DS18B20 temperature reading (°F)
-        room_temp : float
+        room : float
             Current room temperature from Si7021 (°F)
-        cpu_temp : float
+        cpu : float
             Current CPU temperature (°F)
         model : hmmlearn.hmm.GaussianHMM
             Trained HMM model
@@ -509,11 +509,11 @@ try:
             Dictionary containing detection results and diagnostics
         """
         # Calculate derived features
-        ds18b20_room_diff = ds18b20_temp - room_temp
-        ds18b20_cpu_diff = ds18b20_temp - cpu_temp
+        ds18b20_room_diff = core - room
+        ds18b20_cpu_diff = core - cpu
         
         # Create feature vector
-        X = np.array([[ds18b20_temp, room_temp, cpu_temp, 
+        X = np.array([[core, room, cpu, 
                        ds18b20_room_diff, ds18b20_cpu_diff]])
         
         # Standardize features
@@ -530,9 +530,9 @@ try:
         
         # Create result
         result = {
-            'ds18b20_temp': ds18b20_temp,
-            'room_temp': room_temp,
-            'cpu_temp': cpu_temp,
+            'core': core,
+            'room': room,
+            'cpu': cpu,
             'is_connected': state == 1,
             'connected_probability': state_probs[1],
             'disconnected_probability': state_probs[0]
@@ -541,11 +541,11 @@ try:
         return result
     
     # Test the function with the last data point
-    last_point = merged_df.iloc[-1]
+    last_point = df.iloc[-1]
     detection_result = detect_connection_hmm(
-        last_point['ds18b20_temp'],
-        last_point['room_temp'],
-        last_point['cpu_temp'],
+        last_point['core'],
+        last_point['room'],
+        last_point['cpu'],
         model=model,
         scaler=scaler
     )
